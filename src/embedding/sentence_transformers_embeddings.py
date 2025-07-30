@@ -18,7 +18,6 @@ except ImportError:
 try:
     from core.config import Config
 except ImportError:
-    # Fallback if config import fails
     from dotenv import load_dotenv
     load_dotenv()
     
@@ -47,8 +46,7 @@ class SentenceTransformersEmbeddingService:
         
         self.model_name = model_name
         self.logger = logging.getLogger(__name__)
-        
-        # Load the model
+
         self.logger.info(f"Loading embedding model: {model_name}")
         self.model = SentenceTransformer(model_name)
         self.logger.info(f"Loaded embedding model: {model_name}")
@@ -85,8 +83,7 @@ class SentenceTransformersEmbeddingService:
         self.logger.info(f"Generating embeddings for {len(chunks)} chunks in {total_batches} batches of {batch_size}...")
         
         embedded_chunks = []
-        
-        # Process chunks in batches for better performance and accuracy
+
         for i in range(0, len(chunks), batch_size):
             batch_chunks = chunks[i:i + batch_size]
             batch_texts = [chunk.content for chunk in batch_chunks]
@@ -94,7 +91,6 @@ class SentenceTransformersEmbeddingService:
             
             self.logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch_chunks)} chunks)")
             
-            # Generate embeddings for this batch (show progress only for first batch to avoid spam)
             show_progress = (batch_num == 1)
             batch_embeddings = self.embed_batch(batch_texts, show_progress=show_progress)
             
@@ -112,5 +108,4 @@ class SentenceTransformersEmbeddingService:
         self.logger.info(f"✅ Successfully generated embeddings for {len(embedded_chunks)} chunks in {total_batches} batches")
         return embedded_chunks
 
-# For backward compatibility, create an alias
 EmbeddingService = SentenceTransformersEmbeddingService

@@ -15,11 +15,9 @@ class ChromaManager:
         """Initialize ChromaDB client and collection."""
         self.collection_name = collection_name
         self.persist_directory = Config.get_chroma_path()
-        
-        # Ensure directory exists
+
         os.makedirs(self.persist_directory, exist_ok=True)
-        
-        # Initialize ChromaDB client
+
         self.client = chromadb.PersistentClient(
             path=self.persist_directory,
             settings=Settings(
@@ -27,8 +25,7 @@ class ChromaManager:
                 allow_reset=True
             )
         )
-        
-        # Get or create collection
+
         self.collection = self._get_or_create_collection()
         logger.info(f"Connected to ChromaDB collection: {collection_name}")
     
@@ -49,7 +46,7 @@ class ChromaManager:
             return
         
         try:
-            # Prepare data for ChromaDB
+
             ids = [chunk["id"] for chunk in embedded_chunks]
             embeddings = [chunk["embedding"] for chunk in embedded_chunks]
             documents = [chunk["content"] for chunk in embedded_chunks]
@@ -58,7 +55,7 @@ class ChromaManager:
                 **chunk["metadata"]
             } for chunk in embedded_chunks]
             
-            # Add to collection
+
             self.collection.add(
                 ids=ids,
                 embeddings=embeddings,
@@ -81,7 +78,7 @@ class ChromaManager:
                 include=["documents", "metadatas", "distances"]
             )
             
-            # Format results
+
             formatted_results = []
             for i in range(len(results["ids"][0])):
                 result = {
@@ -97,15 +94,14 @@ class ChromaManager:
         except Exception as e:
             logger.warning(f"Collection reference invalid for querying, refreshing: {e}")
             try:
-                # Try to refresh the collection reference
+
                 self.collection = self._get_or_create_collection()
                 results = self.collection.query(
                     query_embeddings=[query_embedding],
                     n_results=top_k,
                     include=["documents", "metadatas", "distances"]
                 )
-                
-                # Format results
+
                 formatted_results = []
                 for i in range(len(results["ids"][0])):
                     result = {
@@ -134,7 +130,7 @@ class ChromaManager:
         except Exception as e:
             logger.warning(f"Collection reference invalid, refreshing: {e}")
             try:
-                # Try to refresh the collection reference
+
                 self.collection = self._get_or_create_collection()
                 count = self.collection.count()
                 return {
@@ -182,7 +178,7 @@ class ChromaManager:
         except Exception as e:
             logger.warning(f"Collection reference invalid for listing, refreshing: {e}")
             try:
-                # Try to refresh the collection reference
+
                 self.collection = self._get_or_create_collection()
                 results = self.collection.get(
                     limit=limit,

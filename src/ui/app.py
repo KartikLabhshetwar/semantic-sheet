@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 import logging
 
-# Add src to path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from ingestion.spreadsheet_reader import SpreadsheetReader
@@ -12,11 +11,9 @@ from embedding.sentence_transformers_embeddings import SentenceTransformersEmbed
 from vector_store.chroma_manager import ChromaManager
 from query.rag_processor import RAGProcessor
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Page configuration
 st.set_page_config(
     page_title="Semantic Spreadsheet Search",
     page_icon="📊",
@@ -85,7 +82,6 @@ def process_uploaded_file(uploaded_file):
     
     with st.spinner("📊 Processing file..."):
         try:
-            # Save uploaded file
             file_path = os.path.join("data", uploaded_file.name)
             os.makedirs("data", exist_ok=True)
             
@@ -103,15 +99,13 @@ def process_uploaded_file(uploaded_file):
             
             st.info(f"📊 Found {len(chunks)} data chunks to process")
             
-            # Generate embeddings with progress
             with st.spinner("Generating embeddings in batches..."):
                 embedding_service = SentenceTransformersEmbeddingService()
                 embedded_chunks = embedding_service.embed_semantic_chunks(chunks, batch_size=32)
             
-            # Store in vector database
             with st.spinner("Storing embeddings in vector database..."):
                 vector_store = ChromaManager()
-                vector_store.clear_collection()  # Clear previous data
+                vector_store.clear_collection()
                 vector_store.add_embeddings(embedded_chunks)
             
             st.session_state.processing_complete = True
@@ -152,15 +146,12 @@ def main():
     """Main application function."""
     initialize_session_state()
     
-    # Header
     st.markdown('<h1 class="main-header">🔍 Semantic Spreadsheet Search</h1>', unsafe_allow_html=True)
     st.markdown("### Ask natural language questions about your Excel or CSV data")
     
-    # Sidebar
     with st.sidebar:
         st.header("📁 Upload & Status")
         
-        # File upload
         uploaded_file = st.file_uploader(
             "Choose an Excel or CSV file",
             type=['xlsx', 'xls', 'csv'],
@@ -172,10 +163,8 @@ def main():
             st.session_state.processing_complete = False
             process_uploaded_file(uploaded_file)
         
-        # Data summary
         display_data_summary()
-        
-        # Reset button
+
         if st.button("🗑️ Clear All Data", use_container_width=True):
             try:
                 vector_store = ChromaManager()
@@ -186,7 +175,6 @@ def main():
             except Exception as e:
                 st.error(f"Error clearing data: {e}")
     
-    # Main content area
     if not st.session_state.get('initialized', False):
         st.warning("⚠️ Application not initialized. Please check your configuration.")
         st.info("Make sure you have:")
@@ -194,11 +182,9 @@ def main():
         st.info("2. Installed all required dependencies")
         return
     
-    # Query section
     st.markdown('<div class="query-section">', unsafe_allow_html=True)
     st.subheader("💬 Ask a Question")
     
-    # Example questions
     example_questions = [
         "Find variance analysis data",
         "Show months that exceeded targets", 
@@ -231,7 +217,6 @@ def main():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Results section
     if search_button and query:
         if not st.session_state.get('processing_complete', False):
             st.warning("⚠️ Please upload and process a file first.")
@@ -239,49 +224,45 @@ def main():
         
         with st.spinner("🔍 Searching and generating response..."):
             try:
-                # Get advanced options
                 top_k = 8
                 if advanced_options:
                     top_k = st.slider("Number of results to consider:", 1, 10, 8)
 
-                # Process query
+
                 rag_processor = st.session_state.rag_processor
                 result = rag_processor.process_query(query, top_k=top_k)
                 
-                # Display results
+
                 st.markdown('<div class="result-card">', unsafe_allow_html=True)
                 st.subheader("💡 Answer")
                 st.write(result["response"])
                 
-                # Display confidence
+
                 if result["confidence"] > 0:
                     st.metric("Confidence", f"{result['confidence']:.1%}")
                 
                 st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Display sources
+
                 if result["sources"]:
                     st.subheader("📋 Sources")
                     for i, source in enumerate(result["sources"], 1):
                         with st.expander(f"Source {i} - {source['metadata'].get('chunk_type', 'Unknown')}"):
                             st.write(f"**Content:** {source['content']}")
-                            
-                            # Display metadata
+
                             st.write("**Metadata:**")
                             for key, value in source["metadata"].items():
                                 if key != "chunk_type":
                                     st.write(f"- {key}: {value}")
-                            
-                            # Display relevance
+
                             st.write(f"**Relevance:** {source['relevance_score']:.2f}")
                 
             except Exception as e:
                 st.error(f"❌ Error processing query: {str(e)}")
                 logger.error(f"Query processing error: {e}")
     
-    # Footer
+
     st.markdown("---")
-    st.markdown("Built with ❤️ using Streamlit, ChromaDB, and Google Gemini")
+    st.markdown("Built using Streamlit, ChromaDB, and Google Gemini")
 
 if __name__ == "__main__":
     main()

@@ -185,27 +185,23 @@ class SpreadsheetReader:
                 for cell in row:
                     if cell.value is not None:
                         try:
-                            # Handle formula attribute safely using helper method
                             formula = self._extract_formula_safely(cell)
-                            
-                            # Debug logging for formula detection
+
                             if formula:
                                 logger.debug(f"Found formula in {cell.coordinate}: {formula}")
-                            
-                            # Handle data_type attribute safely
+
                             data_type = ''
                             if hasattr(cell, 'data_type'):
                                 data_type = str(cell.data_type)
                             else:
-                                # Infer data type from value
                                 if isinstance(cell.value, (int, float)):
-                                    data_type = 'n'  # numeric
+                                    data_type = 'n' 
                                 elif isinstance(cell.value, str):
-                                    data_type = 's'  # string
+                                    data_type = 's' 
                                 elif isinstance(cell.value, bool):
-                                    data_type = 'b'  # boolean
+                                    data_type = 'b' 
                                 else:
-                                    data_type = 's'  # default to string
+                                    data_type = 's'  
                             
                             cell_info = CellData(
                                 sheet_name=sheet_name,
@@ -219,9 +215,7 @@ class SpreadsheetReader:
                             self.cell_data.append(cell_info)
                             
                         except Exception as e:
-                            # Log the error but continue processing
                             logger.warning(f"Error processing cell {cell.coordinate} in sheet '{sheet_name}': {e}")
-                            # Still add basic cell info even if some attributes fail
                             cell_info = CellData(
                                 sheet_name=sheet_name,
                                 row=cell.row,
@@ -229,7 +223,7 @@ class SpreadsheetReader:
                                 value=cell.value,
                                 formula=None,
                                 address=cell.coordinate,
-                                data_type='s'  # default
+                                data_type='s'
                             )
                             self.cell_data.append(cell_info)
         
@@ -239,7 +233,6 @@ class SpreadsheetReader:
         """Create semantic chunks from the extracted cell data."""
         chunks = []
         
-        # Group cells by sheet
         sheets_data = {}
         for cell in self.cell_data:
             if cell.sheet_name not in sheets_data:
@@ -247,29 +240,23 @@ class SpreadsheetReader:
             sheets_data[cell.sheet_name].append(cell)
         
         for sheet_name, cells in sheets_data.items():
-            # Create enhanced sheet summary chunk
             sheet_summary = self._create_enhanced_sheet_summary(sheet_name, cells)
             chunks.append(sheet_summary)
             
-            # Create comprehensive complete data chunks for better retrieval
             complete_data_chunks = self._create_complete_data_chunks(sheet_name, cells)
             chunks.extend(complete_data_chunks)
-            
-            # Create business relationship chunks
+
             relationship_chunks = self._create_business_relationship_chunks(sheet_name, cells)
             chunks.extend(relationship_chunks)
             
-            # Create individual cell chunks
             for cell in cells:
                 cell_chunk = self._create_cell_chunk(cell)
                 chunks.append(cell_chunk)
-                
-                # Create formula chunks if applicable
+
                 if cell.formula and cell.formula.strip():
                     formula_chunk = self._create_formula_chunk(cell)
                     chunks.append(formula_chunk)
             
-            # Create row and column chunks
             row_chunks = self._create_row_chunks(sheet_name, cells)
             column_chunks = self._create_enhanced_column_chunks(sheet_name, cells)
             chunks.extend(row_chunks)
@@ -302,7 +289,6 @@ class SpreadsheetReader:
     
     def _create_formula_chunk(self, cell: CellData) -> SemanticChunk:
         """Create a semantic chunk for a formula."""
-        # Safety check for formula
         formula_text = cell.formula if cell.formula else "Unknown formula"
         content = f"Formula in sheet '{cell.sheet_name}', cell {cell.address}: {formula_text}"
         
@@ -323,7 +309,6 @@ class SpreadsheetReader:
         """Create semantic chunks for rows."""
         chunks = []
         
-        # Group cells by row
         rows = {}
         for cell in cells:
             if cell.row not in rows:
@@ -332,7 +317,7 @@ class SpreadsheetReader:
         
         for row_num, row_cells in rows.items():
             values = [str(c.value) for c in row_cells if c.value is not None]
-            if len(values) > 1:  # Only create row chunks for multi-cell rows
+            if len(values) > 1: 
                 content = f"Row {row_num} in sheet '{sheet_name}' contains: {', '.join(values)}"
                 
                 metadata = self._sanitize_metadata_for_chroma({
@@ -364,7 +349,6 @@ class SpreadsheetReader:
         non_empty_cells = [c for c in cells if c.value is not None]
         formulas = [c for c in cells if c.formula and c.formula.strip()]
         
-        # Extract headers (first row)
         headers = []
         header_cells = [c for c in cells if c.row == 1 and c.value is not None]
         header_cells.sort(key=lambda x: x.column)
@@ -374,8 +358,7 @@ class SpreadsheetReader:
         
         if headers:
             content += f" Column headers are: {', '.join(headers)}."
-            
-            # Identify business patterns in headers
+
             business_patterns = []
             header_lower = [h.lower() for h in headers]
             
@@ -409,22 +392,19 @@ class SpreadsheetReader:
     def _create_business_relationship_chunks(self, sheet_name: str, cells: List[CellData]) -> List[SemanticChunk]:
         """Create chunks that capture business relationships between columns."""
         chunks = []
-        
-        # Group cells by row to analyze relationships
+
         rows = {}
         for cell in cells:
             if cell.row not in rows:
                 rows[cell.row] = {}
             rows[cell.row][cell.column] = cell
-        
-        # Get headers (row 1)
+
         headers = {}
         if 1 in rows:
             for col, cell in rows[1].items():
                 if cell.value:
                     headers[col] = str(cell.value).lower()
-        
-        # Look for common business patterns
+
         target_col = actual_col = variance_col = percent_col = None
         
         for col, header in headers.items():
@@ -436,8 +416,7 @@ class SpreadsheetReader:
                 variance_col = col
             elif '%' in header or 'percent' in header:
                 percent_col = col
-        
-        # Create variance analysis chunk
+
         if target_col and actual_col and variance_col:
             variance_data = []
             for row_num in range(2, len(rows) + 1):
@@ -468,8 +447,7 @@ class SpreadsheetReader:
                     }),
                     chunk_type="business_relationship"
                 ))
-        
-        # Create target achievement chunk
+
         if target_col and actual_col:
             exceeded_targets = []
             for row_num in range(2, len(rows) + 1):
@@ -506,8 +484,7 @@ class SpreadsheetReader:
     def _create_enhanced_column_chunks(self, sheet_name: str, cells: List[CellData]) -> List[SemanticChunk]:
         """Create enhanced semantic chunks for columns with business context."""
         chunks = []
-        
-        # Group cells by column
+
         columns = {}
         for cell in cells:
             col_letter = get_column_letter(cell.column)
@@ -516,28 +493,25 @@ class SpreadsheetReader:
             columns[col_letter].append(cell)
         
         for col_letter, col_cells in columns.items():
-            col_cells.sort(key=lambda x: x.row)  # Sort by row
+            col_cells.sort(key=lambda x: x.row) 
             values = [str(c.value) for c in col_cells if c.value is not None]
             
-            if len(values) > 1:  # Only create column chunks for multi-cell columns
+            if len(values) > 1: 
                 header = values[0] if col_cells[0].row == 1 else "Unknown"
                 data_values = values[1:] if col_cells[0].row == 1 else values
-                
-                # Enhanced content with business context
+
                 content = f"Column {col_letter} in sheet '{sheet_name}'"
                 if header and header != "Unknown":
                     content += f" ('{header}')"
                 content += f" contains {len(data_values)} data values"
-                
-                # Add business context based on header
+
                 if header:
                     header_lower = header.lower()
                     if 'variance' in header_lower or 'difference' in header_lower:
                         content += " representing variance/difference calculations"
-                        # Look for positive/negative values
                         try:
                             numeric_values = []
-                            for val in data_values[:10]:  # Check first 10 values
+                            for val in data_values[:10]:
                                 clean_val = str(val).replace(',', '').replace('$', '').replace('%', '')
                                 try:
                                     numeric_values.append(float(clean_val))
@@ -554,7 +528,6 @@ class SpreadsheetReader:
                     
                     elif '%' in header_lower or 'percent' in header_lower or 'ratio' in header_lower:
                         content += " representing percentage/ratio metrics"
-                        # Look for values over 100%
                         try:
                             over_100_count = 0
                             for val in data_values[:10]:  # Check first 10 values
@@ -575,7 +548,7 @@ class SpreadsheetReader:
                     elif 'actual' in header_lower:
                         content += " containing actual/achieved values"
                 
-                content += f". Values include: {', '.join(data_values[:5])}"  # Show first 5 values
+                content += f". Values include: {', '.join(data_values[:5])}" 
                 if len(data_values) > 5:
                     content += f" and {len(data_values) - 5} more"
                 
@@ -602,8 +575,6 @@ class SpreadsheetReader:
         This solves the retrieval problem by ensuring all data is accessible in single chunks.
         """
         chunks = []
-        
-        # Group cells by column for complete column analysis
         columns = {}
         for cell in cells:
             col_letter = get_column_letter(cell.column)
@@ -611,15 +582,13 @@ class SpreadsheetReader:
                 columns[col_letter] = []
             columns[col_letter].append(cell)
         
-        # Create complete dataset chunks for important columns
         for col_letter, col_cells in columns.items():
             col_cells.sort(key=lambda x: x.row)
             
-            if len(col_cells) > 1:  # Multi-cell columns
+            if len(col_cells) > 1: 
                 header = None
                 data_values = []
-                
-                # Extract header and all data values
+
                 for cell in col_cells:
                     if cell.row == 1:  # Header row
                         header = str(cell.value) if cell.value else f"Column {col_letter}"
@@ -628,15 +597,12 @@ class SpreadsheetReader:
                             data_values.append(str(cell.value))
                 
                 if header and data_values:
-                    # Create a comprehensive chunk with ALL data from this column
                     content = f"COMPLETE COLUMN DATA - Sheet '{sheet_name}', Column {col_letter} ('{header}') contains ALL values: {', '.join(data_values)}"
                     
-                    # Add business context
                     header_lower = header.lower()
                     if any(keyword in header_lower for keyword in ['revenue', 'sales', 'income', 'profit', 'actual', 'target']):
                         content += f". This is a financial data column with {len(data_values)} entries."
                         
-                        # For revenue/financial columns, identify highest and lowest values
                         try:
                             numeric_values = []
                             for i, val in enumerate(data_values):
@@ -653,7 +619,6 @@ class SpreadsheetReader:
                                 
                                 content += f" Range: Lowest {lowest[1]} (row {lowest[2]}), Highest {highest[1]} (row {highest[2]})."
                                 
-                                # Identify all values above certain thresholds
                                 high_values = [item for item in numeric_values if item[0] > (highest[0] * 0.8)]  # Top 20% values
                                 if len(high_values) > 1:
                                     high_desc = [f"{item[1]} (row {item[2]})" for item in high_values]
@@ -667,7 +632,7 @@ class SpreadsheetReader:
                         "header": header,
                         "data_count": len(data_values),
                         "complete_data": True,
-                        "all_values": data_values[:50]  # Store first 50 values in metadata
+                        "all_values": data_values[:50]
                     })
                     
                     chunks.append(SemanticChunk(
@@ -676,21 +641,20 @@ class SpreadsheetReader:
                         chunk_type="complete_column_data"
                     ))
         
-        # Create complete row-based chunks for temporal data
+
         rows = {}
         for cell in cells:
             if cell.row not in rows:
                 rows[cell.row] = {}
             rows[cell.row][cell.column] = cell
-        
-        # If we have temporal data (months/dates), create complete time series chunks
-        if 1 in rows:  # Has header row
+
+        if 1 in rows:
             headers = {}
             for col, cell in rows[1].items():
                 if cell.value:
                     headers[col] = str(cell.value).lower()
             
-            # Look for date/time columns
+
             time_col = None
             value_cols = []
             
@@ -701,12 +665,11 @@ class SpreadsheetReader:
                     value_cols.append((col, header))
             
             if time_col and value_cols:
-                # Create complete time series chunks
                 for value_col, value_header in value_cols:
                     time_series_data = []
                     
                     for row_num in sorted(rows.keys()):
-                        if row_num > 1:  # Skip header
+                        if row_num > 1:
                             time_val = rows[row_num].get(time_col, {}).value if time_col in rows[row_num] else None
                             value_val = rows[row_num].get(value_col, {}).value if value_col in rows[row_num] else None
                             
