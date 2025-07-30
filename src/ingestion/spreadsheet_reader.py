@@ -381,7 +381,7 @@ class SpreadsheetReader:
                         header_val = str(header_cell.value).strip()
                         if any(time_word in header_val.lower() for time_word in ['year', 'month', 'quarter', 'period', 'q1', 'q2', 'q3', 'q4']):
                             time_headers.append((col_num, header_val))
-            s
+            
             if time_headers:
                 for row_num, row_cells in rows.items():
                     if row_num == 1:  
