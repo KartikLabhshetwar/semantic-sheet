@@ -61,7 +61,7 @@ class RAGProcessor:
         semantic_chunks = self.vector_store.query_similar(query_embedding, top_k=top_k)
         all_chunks.extend(semantic_chunks)
         
-        comprehensive_keywords = ['highest', 'lowest', 'maximum', 'minimum', 'all months', 'complete', 'total', 'entire', 'exceeded', 'targets', 'variance', 'profitability', 'revenue', 'performance', 'sales', 'person', 'team', 'individual', 'performed', 'poorly', 'well', 'best', 'worst', 'comparison', 'ranking', 'results', 'achievement', 'customer', 'product', 'pipeline']
+        comprehensive_keywords = ['highest', 'lowest', 'maximum', 'minimum', 'all months', 'complete', 'total', 'entire', 'exceeded', 'targets', 'variance', 'profitability', 'revenue', 'performance', 'sales', 'person', 'team', 'individual', 'performed', 'poorly', 'well', 'best', 'worst', 'comparison', 'ranking', 'results', 'achievement', 'customer', 'product', 'pipeline', 'metrics', 'financial', 'profit', 'margin', 'growth', 'expenses', 'cost', 'cogs', 'cost of goods sold', 'details', 'breakdown', 'analysis']
         if any(keyword in query.lower() for keyword in comprehensive_keywords):
             logger.info("Query requires comprehensive data - expanding retrieval")
             
@@ -157,11 +157,17 @@ class RAGProcessor:
                 
                 individual_query_keywords = ['person', 'individual', 'rep', 'team member', 'who', 'name', 'performed', 'well', 'top', 'best', 'worst', 'alice', 'bob', 'carlos', 'dana', 'evan', 'fiona', 'george', 'hannah', 'ivan', 'julia', 'kevin', 'lily']
                 specific_query_keywords = ['which months', 'what months', 'show months', 'months that', 'specific', 'exact', 'list', 'identify', 'find months', 'exceeded targets', 'negative variance', 'highest revenue', 'lowest', 'names']
+                value_query_keywords = ['details', 'cost of goods sold', 'cogs', 'value', 'amount', 'breakdown', 'analysis', 'expense ratio', 'ratios', 'ratio']
                 
                 is_individual_query = any(keyword in query.lower() for keyword in individual_query_keywords)
                 is_specific_query = any(keyword in query.lower() for keyword in specific_query_keywords)
+                is_value_query = any(keyword in query.lower() for keyword in value_query_keywords)
                 
-                if is_specific_query:
+                if is_value_query:
+                    if (chunk_type in ['key_value_metric', 'ratio_metric', 'formula', 'enhanced_column', 'complete_column_data'] or
+                        any(value_indicator in content for value_indicator in ['=', 'cost of goods sold', 'cogs', '140000', '350000', 'revenue', 'expense', 'ratio', 'margin'])):
+                        relevant_chunks.append(chunk)
+                elif is_specific_query:
                     if (any(keyword in content for keyword in ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']) or
                         any(data_indicator in content for data_indicator in ['1000', '2000', '3000', '4000', '5000', '6000', '7000', '8000', '9000', 'target', 'actual', 'variance', '%']) or
                         chunk_type in ['enhanced_row', 'row', 'complete_data']):
@@ -172,11 +178,14 @@ class RAGProcessor:
                     elif chunk_type in ['enhanced_column', 'business_relationship', 'column']:
                         relevant_chunks.append(chunk)
                 else:
-                    if (chunk_type in ['enhanced_column', 'business_relationship', 'column'] or
-                        any(keyword in content for keyword in ['revenue', 'actual', 'target', 'variance', 'month', 'sales', 'team', 'person', 'performance', 'customer', 'product', 'pipeline', 'rep', 'manager', 'deal', 'quota', 'achievement'])):
+                    if (chunk_type in ['enhanced_column', 'business_relationship', 'column', 'key_value_metric', 'ratio_metric'] or
+                        any(keyword in content for keyword in ['revenue', 'actual', 'target', 'variance', 'month', 'sales', 'team', 'person', 'performance', 'customer', 'product', 'pipeline', 'rep', 'manager', 'deal', 'quota', 'achievement', 'profit', 'margin', 'growth', 'financial', 'metric', 'ratio'])):
                         relevant_chunks.append(chunk)
             
-            if is_specific_query:
+            if is_value_query:
+                final_chunks = relevant_chunks[:12]
+                logger.info(f"Found {len(relevant_chunks)} chunks, using {len(final_chunks)} value-focused chunks for value query")
+            elif is_specific_query:
                 final_chunks = relevant_chunks[:8]
                 logger.info(f"Found {len(relevant_chunks)} chunks, using {len(final_chunks)} data-rich chunks for specific query")
             elif is_individual_query:
@@ -244,6 +253,29 @@ For PROFITABILITY METRICS queries:
 - Identify efficiency metrics like "% to Target", "Achievement %", "Performance Ratio"
 - Explain margin calculations, profit ratios, and efficiency indicators
 - Consider Revenue/Target ratios as profitability indicators
+- Look for key-value pairs like "Gross Margin = 0.6" or "Net Profit Margin = 0.421485714"
+
+For KEY METRICS and FINANCIAL DATA queries:
+- Look for key-value pairs in the format "Metric Name = Value"
+- Identify financial metrics like Total Revenue, Net Profit, Gross Margin, Growth rates, Cost of Goods Sold
+- ALWAYS provide the specific numerical values (e.g., "₹140,000", "₹350,000") 
+- Show cell references when available (e.g., 'P&L Statement'!B3)
+- Explain what each metric means in business context
+- Convert decimal values to percentages when appropriate (e.g., 0.6 = 60%)
+- Provide both the raw value and formatted interpretation
+
+For RATIO ANALYSIS queries (Expense Ratio, Profit Margin, etc.):
+- Look for ratio metrics across multiple time periods (Year 1, Year 2, Year 3)
+- ALWAYS show actual decimal values AND percentage equivalents
+- Example: "Expense Ratio (Year 1) = 0.058857143 (5.89%)"
+- Include values for all available years when showing trends
+- Explain what the ratio measures in business terms
+
+For COST ANALYSIS queries (COGS, Expenses, etc.):
+- Prioritize showing actual currency values over just formulas
+- Include both formula logic AND calculated results
+- Show values across different sheets if available (P&L Statement, 3-Year Forecast)
+- Format large numbers with currency symbols (₹140,000 vs 140000)
 
 For FORMULA analysis:
 - Explain the business logic behind calculations
@@ -257,14 +289,18 @@ DATA INTERPRETATION RULES:
 4. Percentage columns often represent profitability or efficiency metrics
 5. Positive variances indicate exceeding targets; negative indicate shortfalls
 6. Values over 100% in ratio columns indicate target exceeded
+7. For key-value metrics, provide both the raw value and business interpretation
+8. Convert decimal margins to percentages (e.g., 0.6 = 60% margin)
+9. When showing formulas, also show the calculated result value
 
 RESPONSE FORMAT:
-1. Start with a direct answer to the question
-2. Provide specific data points with cell references when available
-3. Explain calculations and business meanings
-4. List relevant items with their values
-5. Include context about data relationships
-6. Use clear formatting with bullets or numbers for lists
+1. Start with a direct answer including the specific VALUE (e.g., "Cost of Goods Sold = ₹140,000")
+2. Provide cell references and sheet locations (e.g., 'P&L Statement'!B3)
+3. Show both formula AND calculated result (e.g., "=B2*0.4 = ₹140,000")
+4. Explain calculations and business meanings
+5. List relevant items with their actual values formatted with currency
+6. Include context about data relationships across sheets
+7. Use clear formatting with bullets or numbers for lists
 
 Answer:"""
     

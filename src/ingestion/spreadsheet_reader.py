@@ -290,13 +290,18 @@ class SpreadsheetReader:
     def _create_formula_chunk(self, cell: CellData) -> SemanticChunk:
         """Create a semantic chunk for a formula."""
         formula_text = cell.formula if cell.formula else "Unknown formula"
-        content = f"Formula in sheet '{cell.sheet_name}', cell {cell.address}: {formula_text}"
+
+        if cell.value is not None:
+            content = f"Formula in sheet '{cell.sheet_name}', cell {cell.address}: {formula_text} = {cell.value}"
+        else:
+            content = f"Formula in sheet '{cell.sheet_name}', cell {cell.address}: {formula_text}"
         
         metadata = self._sanitize_metadata_for_chroma({
             "sheet_name": cell.sheet_name,
             "address": cell.address,
             "formula": formula_text,
-            "result": str(cell.value)
+            "result": str(cell.value),
+            "has_result": cell.value is not None
         })
         
         return SemanticChunk(
@@ -304,6 +309,139 @@ class SpreadsheetReader:
             metadata=metadata,
             chunk_type="formula"
         )
+    
+    def _create_key_value_chunks(self, sheet_name: str, cells: List[CellData]) -> List[SemanticChunk]:
+        """Create chunks specifically for key-value pair data like metrics tables."""
+        chunks = []
+        
+        rows = {}
+        for cell in cells:
+            if cell.row not in rows:
+                rows[cell.row] = {}
+            rows[cell.row][cell.column] = cell
+        
+        for row_num, row_cells in rows.items():
+            if len(row_cells) >= 2:
+                col1_cell = row_cells.get(1)  
+                col2_cell = row_cells.get(2)  
+                
+                if col1_cell and col2_cell and col1_cell.value and col2_cell.value:
+                    key = str(col1_cell.value).strip()
+                    value = str(col2_cell.value).strip()
+                    
+                    if key.lower() in ['key metrics', 'metric', 'description', 'name'] or not value:
+                        continue
+                    
+                    content = f"Financial Metric: {key} = {value}"
+                    
+
+                    key_lower = key.lower()
+                    if any(keyword in key_lower for keyword in ['revenue', 'sales', 'income']):
+                        content += " (Revenue/Sales metric)"
+                    elif any(keyword in key_lower for keyword in ['profit', 'margin', 'earnings']):
+                        content += " (Profitability metric)"
+                    elif any(keyword in key_lower for keyword in ['growth', 'rate', '%']):
+                        content += " (Growth/Performance metric)"
+                    elif any(keyword in key_lower for keyword in ['expense', 'cost', 'cogs', 'cost of goods sold']):
+                        content += " (Cost/Expense metric)"
+
+                    try:
+                        numeric_value = float(str(value).replace(',', '').replace('$', '').replace('%', ''))
+                        if 'margin' in key_lower or '%' in key_lower or 'rate' in key_lower:
+                            if numeric_value < 1:
+                                content += f" ({numeric_value:.1%} percentage)"
+                            else:
+                                content += f" ({numeric_value}% percentage)"
+                        elif numeric_value >= 1000:
+                            content += f" (${numeric_value:,.0f} currency value)"
+                    except ValueError:
+                        pass
+                    
+                    metadata = self._sanitize_metadata_for_chroma({
+                        "sheet_name": sheet_name,
+                        "row": row_num,
+                        "metric_name": key,
+                        "metric_value": value,
+                        "key_column": "A",
+                        "value_column": "B"
+                    })
+                    
+                    chunks.append(SemanticChunk(
+                        content=content,
+                        metadata=metadata,
+                        chunk_type="key_value_metric"
+                    ))
+        if len(rows) > 1:
+            header_row = rows.get(1, {})
+            time_headers = []
+            for col_num in sorted(header_row.keys()):
+                if col_num > 1:
+                    header_cell = header_row.get(col_num)
+                    if header_cell and header_cell.value:
+                        header_val = str(header_cell.value).strip()
+                        if any(time_word in header_val.lower() for time_word in ['year', 'month', 'quarter', 'period', 'q1', 'q2', 'q3', 'q4']):
+                            time_headers.append((col_num, header_val))
+            s
+            if time_headers:
+                for row_num, row_cells in rows.items():
+                    if row_num == 1:  
+                        continue
+
+                    metric_cell = row_cells.get(1)
+                    if not metric_cell or not metric_cell.value:
+                        continue
+                    
+                    metric_name = str(metric_cell.value).strip()
+
+                    if metric_name.lower() in ['ratio', 'metric', 'description', 'name']:
+                        continue
+
+                    for col_num, time_header in time_headers:
+                        value_cell = row_cells.get(col_num)
+                        if value_cell and value_cell.value is not None:
+                            value = str(value_cell.value).strip()
+
+                            if not value or value == '' or (value == '0' and 'growth' in metric_name.lower()):
+                                continue
+
+                            content = f"Financial Ratio: {metric_name} ({time_header}) = {value}"
+
+                            metric_lower = metric_name.lower()
+                            if any(keyword in metric_lower for keyword in ['expense', 'cost', 'cogs']):
+                                content += " (Cost/Expense ratio)"
+                            elif any(keyword in metric_lower for keyword in ['profit', 'margin', 'earnings']):
+                                content += " (Profitability ratio)"
+                            elif any(keyword in metric_lower for keyword in ['growth', 'rate']):
+                                content += " (Growth ratio)"
+                            elif any(keyword in metric_lower for keyword in ['revenue', 'sales']):
+                                content += " (Revenue ratio)"
+
+                            try:
+                                numeric_value = float(value.replace(',', '').replace('$', '').replace('%', ''))
+                                if numeric_value < 1 and numeric_value > 0:
+                                    content += f" ({numeric_value:.2%} formatted)"
+                                elif numeric_value >= 1000:
+                                    content += f" (${numeric_value:,.0f} currency)"
+                            except ValueError:
+                                pass
+                            
+                            metadata = self._sanitize_metadata_for_chroma({
+                                "sheet_name": sheet_name,
+                                "row": row_num,
+                                "column": col_num,
+                                "metric_name": metric_name,
+                                "time_period": time_header,
+                                "metric_value": value,
+                                "table_type": "ratio_table"
+                            })
+                            
+                            chunks.append(SemanticChunk(
+                                content=content,
+                                metadata=metadata,
+                                chunk_type="ratio_metric"
+                            ))
+        
+        return chunks
     
     def _create_row_chunks(self, sheet_name: str, cells: List[CellData]) -> List[SemanticChunk]:
         """Create semantic chunks for rows."""
@@ -640,6 +778,9 @@ class SpreadsheetReader:
                         metadata=metadata,
                         chunk_type="complete_column_data"
                     ))
+
+        key_value_chunks = self._create_key_value_chunks(sheet_name, cells)
+        chunks.extend(key_value_chunks)
         
 
         rows = {}
