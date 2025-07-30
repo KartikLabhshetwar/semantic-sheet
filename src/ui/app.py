@@ -79,11 +79,11 @@ def initialize_session_state():
         st.session_state.processing_complete = False
 
 def process_uploaded_file(uploaded_file):
-    """Process the uploaded Excel file."""
+    """Process the uploaded Excel or CSV file."""
     if uploaded_file is None:
         return
     
-    with st.spinner("📊 Processing spreadsheet..."):
+    with st.spinner("📊 Processing file..."):
         try:
             # Save uploaded file
             file_path = os.path.join("data", uploaded_file.name)
@@ -93,12 +93,12 @@ def process_uploaded_file(uploaded_file):
                 f.write(uploaded_file.getbuffer())
             
             # Process the file
-            with st.spinner("Reading spreadsheet..."):
+            with st.spinner("Reading file..."):
                 reader = SpreadsheetReader(file_path)
                 chunks = reader.process_file()
             
             if not chunks:
-                st.error("❌ No data found in the spreadsheet.")
+                st.error("❌ No data found in the file.")
                 return
             
             st.info(f"📊 Found {len(chunks)} data chunks to process")
@@ -154,7 +154,7 @@ def main():
     
     # Header
     st.markdown('<h1 class="main-header">🔍 Semantic Spreadsheet Search</h1>', unsafe_allow_html=True)
-    st.markdown("### Ask natural language questions about your Excel data")
+    st.markdown("### Ask natural language questions about your Excel or CSV data")
     
     # Sidebar
     with st.sidebar:
@@ -162,8 +162,8 @@ def main():
         
         # File upload
         uploaded_file = st.file_uploader(
-            "Choose an Excel file",
-            type=['xlsx', 'xls'],
+            "Choose an Excel or CSV file",
+            type=['xlsx', 'xls', 'csv'],
             key="file_uploader"
         )
         
@@ -200,6 +200,9 @@ def main():
     
     # Example questions
     example_questions = [
+        "Find variance analysis data",
+        "Show months that exceeded targets", 
+        "Find profitability metrics",
         "What is the total revenue for Q3?",
         "Show me all formulas in the budget sheet",
         "Which products have the highest sales?",
@@ -216,7 +219,7 @@ def main():
     query = st.text_area(
         "Or type your own question:",
         value=selected_example if selected_example else "",
-        placeholder="Ask any question about your spreadsheet data...",
+        placeholder="Ask any question about your Excel or CSV data...",
         height=100
     )
     
@@ -231,16 +234,16 @@ def main():
     # Results section
     if search_button and query:
         if not st.session_state.get('processing_complete', False):
-            st.warning("⚠️ Please upload and process a spreadsheet first.")
+            st.warning("⚠️ Please upload and process a file first.")
             return
         
         with st.spinner("🔍 Searching and generating response..."):
             try:
                 # Get advanced options
-                top_k = 5
+                top_k = 8
                 if advanced_options:
-                    top_k = st.slider("Number of results to consider:", 1, 10, 5)
-                
+                    top_k = st.slider("Number of results to consider:", 1, 10, 8)
+
                 # Process query
                 rag_processor = st.session_state.rag_processor
                 result = rag_processor.process_query(query, top_k=top_k)

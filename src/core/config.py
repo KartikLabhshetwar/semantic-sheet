@@ -13,12 +13,12 @@ class Config:
     
     # Vector Database Configuration
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "all-mpnet-base-v2")  # More powerful model
     
     # Application Settings
     MAX_CHUNK_SIZE: int = int(os.getenv("MAX_CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
-    TOP_K_RESULTS: int = int(os.getenv("TOP_K_RESULTS", "5"))
+    TOP_K_RESULTS: int = int(os.getenv("TOP_K_RESULTS", "20"))  # Increased for better coverage
     
     # Validation
     @classmethod
