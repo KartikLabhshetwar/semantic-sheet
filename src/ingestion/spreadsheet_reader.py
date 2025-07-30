@@ -543,7 +543,7 @@ class SpreadsheetReader:
                 if cell.value:
                     headers[col] = str(cell.value).lower()
 
-        target_col = actual_col = variance_col = percent_col = None
+        target_col = actual_col = variance_col = percent_col = month_col = None
         
         for col, header in headers.items():
             if 'target' in header:
@@ -554,6 +554,67 @@ class SpreadsheetReader:
                 variance_col = col
             elif '%' in header or 'percent' in header:
                 percent_col = col
+            elif 'month' in header or 'period' in header or 'date' in header:
+                month_col = col
+
+
+        if target_col and actual_col:
+            exceeded_targets = []
+            month_performance = []
+            
+            for row_num in range(2, len(rows) + 1):
+                if row_num in rows:
+                    target_val = rows[row_num].get(target_col, {}).value
+                    actual_val = rows[row_num].get(actual_col, {}).value
+                    month_val = rows[row_num].get(month_col, {}).value if month_col else f"Row {row_num}"
+                    
+                    if target_val and actual_val:
+                        try:
+                            target_num = float(str(target_val).replace(',', '').replace('$', ''))
+                            actual_num = float(str(actual_val).replace(',', '').replace('$', ''))
+                            
+                            performance_status = "exceeded target" if actual_num > target_num else "below target"
+                            variance = actual_num - target_num
+                            percent_to_target = (actual_num / target_num) * 100 if target_num != 0 else 0
+                            
+                            month_performance.append(f"{month_val}: Target ${target_num:,.0f}, Actual ${actual_num:,.0f}, Variance ${variance:+,.0f} ({percent_to_target:.1f}% to target) - {performance_status}")
+                            
+                            if actual_num > target_num:
+                                exceeded_targets.append(f"{month_val} (Actual: ${actual_num:,.0f} vs Target: ${target_num:,.0f})")
+                                
+                        except (ValueError, TypeError):
+                            continue
+            
+            # Create comprehensive target vs actual chunk
+            if month_performance:
+                content = f"TARGET VS ACTUAL PERFORMANCE ANALYSIS in sheet '{sheet_name}': Complete monthly breakdown: {'; '.join(month_performance)}"
+                
+                chunks.append(SemanticChunk(
+                    content=content,
+                    metadata=self._sanitize_metadata_for_chroma({
+                        "sheet_name": sheet_name,
+                        "analysis_type": "target_vs_actual_complete",
+                        "target_column": get_column_letter(target_col),
+                        "actual_column": get_column_letter(actual_col),
+                        "months_analyzed": len(month_performance),
+                        "months_exceeded": len(exceeded_targets)
+                    }),
+                    chunk_type="business_relationship"
+                ))
+
+            if exceeded_targets:
+                content = f"MONTHS THAT EXCEEDED TARGETS in sheet '{sheet_name}': {', '.join(exceeded_targets)}. These {len(exceeded_targets)} months had actual revenue higher than target revenue."
+                
+                chunks.append(SemanticChunk(
+                    content=content,
+                    metadata=self._sanitize_metadata_for_chroma({
+                        "sheet_name": sheet_name,
+                        "analysis_type": "exceeded_targets",
+                        "months_count": len(exceeded_targets)
+                    }),
+                    chunk_type="exceeded_targets"
+                ))
+
 
         if target_col and actual_col and variance_col:
             variance_data = []
@@ -562,17 +623,18 @@ class SpreadsheetReader:
                     target_val = rows[row_num].get(target_col, {}).value if target_col in rows[row_num] else None
                     actual_val = rows[row_num].get(actual_col, {}).value if actual_col in rows[row_num] else None
                     variance_val = rows[row_num].get(variance_col, {}).value if variance_col in rows[row_num] else None
+                    month_val = rows[row_num].get(month_col, {}).value if month_col else f"Row {row_num}"
                     
                     if target_val and actual_val and variance_val:
                         try:
                             variance_num = float(str(variance_val).replace(',', '').replace('$', ''))
                             status = "exceeded target" if variance_num > 0 else "below target"
-                            variance_data.append(f"Row {row_num}: Target {target_val}, Actual {actual_val}, Variance {variance_val} ({status})")
+                            variance_data.append(f"{month_val}: Target {target_val}, Actual {actual_val}, Variance {variance_val} ({status})")
                         except (ValueError, TypeError):
                             continue
             
             if variance_data:
-                content = f"Variance Analysis in sheet '{sheet_name}': {headers.get(target_col, 'Target')} vs {headers.get(actual_col, 'Actual')} with calculated {headers.get(variance_col, 'Variance')}. " + "; ".join(variance_data[:5])  # Limit to first 5 rows
+                content = f"VARIANCE ANALYSIS in sheet '{sheet_name}': {headers.get(target_col, 'Target')} vs {headers.get(actual_col, 'Actual')} with calculated {headers.get(variance_col, 'Variance')}. Complete data: {'; '.join(variance_data)}"
                 
                 chunks.append(SemanticChunk(
                     content=content,
@@ -586,37 +648,6 @@ class SpreadsheetReader:
                     chunk_type="business_relationship"
                 ))
 
-        if target_col and actual_col:
-            exceeded_targets = []
-            for row_num in range(2, len(rows) + 1):
-                if row_num in rows:
-                    target_val = rows[row_num].get(target_col, {}).value
-                    actual_val = rows[row_num].get(actual_col, {}).value
-                    
-                    if target_val and actual_val:
-                        try:
-                            target_num = float(str(target_val).replace(',', '').replace('$', ''))
-                            actual_num = float(str(actual_val).replace(',', '').replace('$', ''))
-                            if actual_num > target_num:
-                                # Try to get row identifier (usually first column)
-                                row_id = rows[row_num].get(1, {}).value if 1 in rows[row_num] else f"Row {row_num}"
-                                exceeded_targets.append(f"{row_id} (Actual: {actual_val}, Target: {target_val})")
-                        except (ValueError, TypeError):
-                            continue
-            
-            if exceeded_targets:
-                content = f"Target Achievement Analysis in sheet '{sheet_name}': The following periods/items exceeded their targets: {'; '.join(exceeded_targets[:10])}"  # Limit to first 10
-                
-                chunks.append(SemanticChunk(
-                    content=content,
-                    metadata=self._sanitize_metadata_for_chroma({
-                        "sheet_name": sheet_name,
-                        "analysis_type": "target_achievement",
-                        "exceeded_count": len(exceeded_targets)
-                    }),
-                    chunk_type="business_relationship"
-                ))
-        
         return chunks
     
     def _create_enhanced_column_chunks(self, sheet_name: str, cells: List[CellData]) -> List[SemanticChunk]:

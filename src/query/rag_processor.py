@@ -61,7 +61,16 @@ class RAGProcessor:
         semantic_chunks = self.vector_store.query_similar(query_embedding, top_k=top_k)
         all_chunks.extend(semantic_chunks)
         
+
         comprehensive_keywords = ['highest', 'lowest', 'maximum', 'minimum', 'all months', 'complete', 'total', 'entire', 'exceeded', 'targets', 'variance', 'profitability', 'revenue', 'performance', 'sales', 'person', 'team', 'individual', 'performed', 'poorly', 'well', 'best', 'worst', 'comparison', 'ranking', 'results', 'achievement', 'customer', 'product', 'pipeline', 'metrics', 'financial', 'profit', 'margin', 'growth', 'expenses', 'cost', 'cogs', 'cost of goods sold', 'details', 'breakdown', 'analysis']
+
+        target_achievement_keywords = ['exceeded targets', 'exceed targets', 'surpass targets', 'beat targets', 'above target', 'over target', 'months that exceeded', 'which months exceeded', 'target achievement', 'performance above target']
+        
+        if any(keyword in query.lower() for keyword in target_achievement_keywords):
+            logger.info("Target achievement query detected - prioritizing exceeded_targets chunks")
+            exceeded_chunks = self._get_target_achievement_chunks(query, top_k)
+            all_chunks.extend(exceeded_chunks)
+        
         if any(keyword in query.lower() for keyword in comprehensive_keywords):
             logger.info("Query requires comprehensive data - expanding retrieval")
             
@@ -225,6 +234,32 @@ class RAGProcessor:
             logger.warning(f"Error getting temporal data chunks: {e}")
             return []
     
+    def _get_target_achievement_chunks(self, query: str, max_chunks: int) -> List[Dict[str, Any]]:
+        """Get chunks specifically about target achievement and exceeded targets."""
+        try:
+            all_chunks = self.vector_store.list_all_chunks(limit=max_chunks * 3)
+            
+            target_chunks = []
+            for chunk in all_chunks:
+                chunk_type = chunk.get('metadata', {}).get('chunk_type', '')
+                content = chunk.get('content', '').lower()
+                
+
+                if (chunk_type == 'exceeded_targets' or
+                    chunk_type == 'business_relationship' or
+                    'exceeded target' in content or
+                    'months that exceeded' in content or
+                    'target vs actual' in content or
+                    'performance analysis' in content):
+                    target_chunks.append(chunk)
+            
+            logger.info(f"Found {len(target_chunks)} target achievement chunks")
+            return target_chunks[:max_chunks]
+            
+        except Exception as e:
+            logger.warning(f"Error getting target achievement chunks: {e}")
+            return []
+    
     def _create_prompt(self, query: str, context: str) -> str:
         
         return f"""You are an expert spreadsheet data analyst specializing in financial and business data analysis. You help users understand complex spreadsheet relationships, calculations, and metrics.
@@ -247,6 +282,9 @@ For TARGET PERFORMANCE queries:
 - Look for percentage achievement columns (% to Target, Achievement Rate, etc.)
 - List specific periods that exceeded targets with their values
 - Calculate achievement rates when possible
+- ALWAYS provide month names and actual dollar amounts
+- Example: "January exceeded target with actual revenue of $125,000 vs target of $120,000"
+- Look for chunks with "exceeded target" or "months that exceeded" content
 
 For PROFITABILITY METRICS queries:
 - Look for columns showing percentages, ratios, or achievement rates
