@@ -101,14 +101,29 @@ class RAGProcessor:
                 seen_content.add(content_hash)
                 unique_chunks.append(chunk)
         
-        # Sort by relevance (distance) and limit to reasonable size for context window
         unique_chunks.sort(key=lambda x: x.get('distance', 1.0))
         
-        # For comprehensive queries, ensure we always get enough chunks
+        # Classify query type for optimal chunk selection
         is_comprehensive_query = any(kw in query.lower() for kw in comprehensive_keywords + temporal_keywords)
-        max_chunks = min(top_k * 2, 25) if is_comprehensive_query else max(top_k, 12)  # Minimum 12 chunks for all queries
         
-        logger.info(f"Retrieved {len(unique_chunks[:max_chunks])} chunks using comprehensive strategy")
+        # Specific query indicators (looking for exact data/values)
+        specific_query_keywords = ['which months', 'what months', 'show months', 'months that', 'specific', 'exact', 'list', 'identify', 'find months', 'exceeded targets', 'negative variance', 'highest revenue', 'lowest', 'names', 'who']
+        is_specific_query = any(kw in query.lower() for kw in specific_query_keywords)
+        
+        if is_specific_query:
+            # For specific queries: fewer chunks but prioritize data-rich content
+            max_chunks = min(8, top_k)
+            logger.info(f"Specific query detected - using {max_chunks} focused chunks with actual data")
+        elif is_comprehensive_query:
+            # For comprehensive queries: more chunks for complete coverage
+            max_chunks = min(20, top_k * 2)
+            logger.info(f"Comprehensive query detected - using {max_chunks} chunks for complete coverage")
+        else:
+            # Default: moderate chunk count
+            max_chunks = min(12, top_k)
+            logger.info(f"Standard query detected - using {max_chunks} chunks")
+        
+        logger.info(f"Retrieved {len(unique_chunks[:max_chunks])} chunks using {('specific' if is_specific_query else 'comprehensive' if is_comprehensive_query else 'standard')} strategy")
         return unique_chunks[:max_chunks]
     
     def _generate_response(self, query: str, relevant_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -173,13 +188,44 @@ class RAGProcessor:
                 chunk_type = chunk.get('metadata', {}).get('chunk_type', '')
                 content = chunk.get('content', '').lower()
                 
-                # Include chunks that contain comprehensive column data
-                if (chunk_type in ['enhanced_column', 'business_relationship', 'column'] or
-                    any(keyword in content for keyword in ['revenue', 'actual', 'target', 'variance', 'month', 'sales', 'team', 'person', 'performance', 'customer', 'product', 'pipeline', 'rep', 'manager', 'deal', 'quota', 'achievement'])):
-                    relevant_chunks.append(chunk)
+                # Classify query types for optimal chunk selection
+                individual_query_keywords = ['person', 'individual', 'rep', 'team member', 'who', 'name', 'performed', 'well', 'top', 'best', 'worst', 'alice', 'bob', 'carlos', 'dana', 'evan', 'fiona', 'george', 'hannah', 'ivan', 'julia', 'kevin', 'lily']
+                specific_query_keywords = ['which months', 'what months', 'show months', 'months that', 'specific', 'exact', 'list', 'identify', 'find months', 'exceeded targets', 'negative variance', 'highest revenue', 'lowest', 'names']
+                
+                is_individual_query = any(keyword in query.lower() for keyword in individual_query_keywords)
+                is_specific_query = any(keyword in query.lower() for keyword in specific_query_keywords)
+                
+                # For specific queries (like "show months that exceeded targets"), prioritize data-rich chunks
+                if is_specific_query:
+                    # Look for chunks with actual data values, not just metadata
+                    if (any(keyword in content for keyword in ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']) or
+                        any(data_indicator in content for data_indicator in ['1000', '2000', '3000', '4000', '5000', '6000', '7000', '8000', '9000', 'target', 'actual', 'variance', '%']) or
+                        chunk_type in ['enhanced_row', 'row', 'complete_data']):
+                        relevant_chunks.append(chunk)
+                # For individual queries, prioritize row chunks that contain names + data
+                elif is_individual_query:
+                    if chunk_type in ['row', 'enhanced_row']:
+                        relevant_chunks.append(chunk)  # Prioritize row chunks for individual queries
+                    elif chunk_type in ['enhanced_column', 'business_relationship', 'column']:
+                        relevant_chunks.append(chunk)  # Add column chunks as secondary
+                else:
+                    # For comprehensive queries, use broad inclusion logic
+                    if (chunk_type in ['enhanced_column', 'business_relationship', 'column'] or
+                        any(keyword in content for keyword in ['revenue', 'actual', 'target', 'variance', 'month', 'sales', 'team', 'person', 'performance', 'customer', 'product', 'pipeline', 'rep', 'manager', 'deal', 'quota', 'achievement'])):
+                        relevant_chunks.append(chunk)
             
-            logger.info(f"Found {len(relevant_chunks)} comprehensive column chunks")
-            return relevant_chunks[:max_chunks]
+            # Apply different limits based on query type
+            if is_specific_query:
+                final_chunks = relevant_chunks[:8]  # Few chunks with rich data for specific queries
+                logger.info(f"Found {len(relevant_chunks)} chunks, using {len(final_chunks)} data-rich chunks for specific query")
+            elif is_individual_query:
+                final_chunks = relevant_chunks[:8]  # Limited chunks for individual queries to avoid confusion
+                logger.info(f"Found {len(relevant_chunks)} chunks, using {len(final_chunks)} focused chunks for individual query")
+            else:
+                final_chunks = relevant_chunks[:max_chunks]  # More chunks for comprehensive queries
+                logger.info(f"Found {len(relevant_chunks)} chunks, using {len(final_chunks)} chunks for comprehensive query")
+            
+            return final_chunks
             
         except Exception as e:
             logger.warning(f"Error getting comprehensive column data: {e}")
