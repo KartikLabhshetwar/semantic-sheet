@@ -2,6 +2,13 @@
 
 A production-ready RAG system that transforms spreadsheet data into queryable knowledge using natural language. Built for business analysts who need semantic understanding of financial data without SQL or pivot tables.
 
+## Demo
+
+
+https://github.com/user-attachments/assets/e197788e-802a-4341-8d39-6cafa9ba1221
+
+
+
 ## Overview
 
 Ask questions like *"Which months exceeded targets?"* or *"Find all profitability metrics"* and get intelligent answers with business context and confidence scores.
